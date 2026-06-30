@@ -128,14 +128,6 @@
 <body>
 <div class="app">
 
-  <!-- 설정 화면: GAS Web App URL 최초 1회 입력 (이후 로컬 저장) -->
-  <div class="setup-wrap" id="setup-wrap">
-    <div class="setup-title">GAS 연결 설정</div>
-    <div class="setup-sub">행사 GAS 웹앱 URL을 입력해 주세요.<br>한 번만 입력하면 이 기기에 저장됩니다.</div>
-    <input class="setup-input" id="setup-url" type="text" placeholder="https://script.google.com/macros/s/.../exec" />
-    <button class="setup-btn" id="setup-btn">연결</button>
-  </div>
-
   <!-- PIN 화면 -->
   <div class="pin-wrap" id="pin-wrap">
     <div class="pin-badge"><span class="pin-badge-dot"></span><span class="pin-badge-text">운영진 전용</span></div>
@@ -190,14 +182,14 @@
 
 <script>
 (function() {
-  var STORAGE_KEY = 'krew_admin_gas_url';
-  var GAS_URL = '';
+  /* ════════════════════════════════════════════════════════
+     아래 GAS_URL만 행사마다 수정하면 됩니다.
+     배포된 GAS 웹앱의 /exec 로 끝나는 URL을 그대로 붙여넣으세요.
+     ════════════════════════════════════════════════════════ */
+  var GAS_URL = "https://script.google.com/macros/s/AKfycbz6nnj0LpnY9GOEJgcluiQ9CvqLvBrXyJdbrKrxK2nlcKNlTnTFxS7J0qCRE88GSkQQ/exec";
+
   var _pin = '';
   var _scanner = null, _scanning = false, _processing = false;
-
-  var setupWrap = document.getElementById('setup-wrap');
-  var setupUrl  = document.getElementById('setup-url');
-  var setupBtn  = document.getElementById('setup-btn');
 
   var pinWrap     = document.getElementById('pin-wrap');
   var pinInput    = document.getElementById('pin-input');
@@ -229,29 +221,8 @@
     ONSITE :{bg:'rgba(96,165,250,.12)',dot:'#60a5fa',text:'#60a5fa',label:'현장신청'}
   };
 
-  /* ── 초기 진입: 저장된 GAS URL 확인 ── */
-  function init() {
-    var saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      GAS_URL = saved;
-      setupWrap.style.display = 'none';
-      pinWrap.style.display   = 'flex';
-    } else {
-      setupWrap.style.display = 'flex';
-    }
-  }
-
-  setupBtn.addEventListener('click', function() {
-    var url = setupUrl.value.trim();
-    if (!url || !url.startsWith('https://script.google.com/')) {
-      alert('올바른 GAS 웹앱 URL을 입력해 주세요.');
-      return;
-    }
-    localStorage.setItem(STORAGE_KEY, url);
-    GAS_URL = url;
-    setupWrap.style.display = 'none';
-    pinWrap.style.display   = 'flex';
-  });
+  /* ── 초기 진입: PIN 화면 바로 노출 ── */
+  pinWrap.style.display = 'flex';
 
   pinBtn.addEventListener('click', verifyPin);
   pinInput.addEventListener('keydown', function(e){ if(e.key==='Enter') verifyPin(); });
@@ -416,8 +387,6 @@
   }
 
   function setLoading(on) { loading.classList.toggle('show', on); }
-
-  init();
 })();
 </script>
 </body>
