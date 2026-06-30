@@ -245,23 +245,17 @@
     var pin = pinInput.value.trim();
     if (!pin) { pinError.textContent = 'PIN을 입력해 주세요.'; return; }
     setLoading(true);
-    callGAS('verifyPin', { pin: pin })
+    callGAS('verifyAndConfig', { pin: pin })
       .then(function(res) {
+        setLoading(false);
         if (res.status === 'ok') {
           _pin = pin;
-          // 행사 설정(식사/일정 노출 여부) 받아오기
-          return callGAS('getConfig', { pin: pin }).then(function(cfg) {
-            setLoading(false);
-            if (cfg.status === 'ok') {
-              _enableMeal     = cfg.enableMeal;
-              _enableSchedule = cfg.enableSchedule;
-            }
-            pinWrap.style.display = 'none';
-            scannerWrap.style.display = 'flex';
-            startScanner();
-          });
+          _enableMeal     = res.enableMeal;
+          _enableSchedule = res.enableSchedule;
+          pinWrap.style.display = 'none';
+          scannerWrap.style.display = 'flex';
+          startScanner();
         } else {
-          setLoading(false);
           pinError.textContent = res.message || 'PIN이 올바르지 않습니다.';
           pinInput.value = ''; pinInput.focus();
         }
