@@ -149,7 +149,7 @@
     <div class="scanner-status" id="scanner-status">카메라를 QR 코드에 가져다 대주세요</div>
     <div class="scan-error" id="scan-error"></div>
     <div class="dup-banner" id="dup-banner">
-      <div class="dup-banner-title">⚠️ 이미 처리된 코드</div>
+      <div class="dup-banner-title">이미 처리된 코드</div>
       <div class="dup-banner-sub" id="dup-banner-sub"></div>
     </div>
     <div class="result-card no-dup" id="result-card">
@@ -186,10 +186,11 @@
      아래 GAS_URL만 행사마다 수정하면 됩니다.
      배포된 GAS 웹앱의 /exec 로 끝나는 URL을 그대로 붙여넣으세요.
      ════════════════════════════════════════════════════════ */
-  var GAS_URL = "https://script.google.com/macros/s/AKfycbz6nnj0LpnY9GOEJgcluiQ9CvqLvBrXyJdbrKrxK2nlcKNlTnTFxS7J0qCRE88GSkQQ/exec";
+  var GAS_URL = "https://script.google.com/macros/s/여기에_배포된_GAS_ID/exec";
 
   var _pin = '';
   var _scanner = null, _scanning = false, _processing = false;
+  var _enableMeal = true, _enableSchedule = true;  // getConfig 응답으로 갱신됨
 
   var pinWrap     = document.getElementById('pin-wrap');
   var pinInput    = document.getElementById('pin-input');
@@ -246,13 +247,21 @@
     setLoading(true);
     callGAS('verifyPin', { pin: pin })
       .then(function(res) {
-        setLoading(false);
         if (res.status === 'ok') {
           _pin = pin;
-          pinWrap.style.display = 'none';
-          scannerWrap.style.display = 'flex';
-          startScanner();
+          // 행사 설정(식사/일정 노출 여부) 받아오기
+          return callGAS('getConfig', { pin: pin }).then(function(cfg) {
+            setLoading(false);
+            if (cfg.status === 'ok') {
+              _enableMeal     = cfg.enableMeal;
+              _enableSchedule = cfg.enableSchedule;
+            }
+            pinWrap.style.display = 'none';
+            scannerWrap.style.display = 'flex';
+            startScanner();
+          });
         } else {
+          setLoading(false);
           pinError.textContent = res.message || 'PIN이 올바르지 않습니다.';
           pinInput.value = ''; pinInput.focus();
         }
@@ -282,7 +291,7 @@
     if (!_scanning || _processing) return;
     _processing = true; _scanning = false;
     _scanner.stop().catch(function(){});
-    scanStatus.textContent = '스캔됨: ' + decodedText;
+    scanStatus.textContent = '처리 중...';
     hideResults();
     setLoading(true);
     callGAS('scanQR', { qr: decodedText, pin: _pin })
@@ -315,7 +324,7 @@
       specialCard.style.display = 'block';
       specialCard.style.background = '#1c1500';
       specialCard.style.border = '1px solid #b45309';
-      specialIcon.textContent = '📋';
+      specialIcon.textContent = '';
       specialTitle.textContent = '사전신청 없음';
       specialMsg.textContent = '사전신청을 하지 않은 분입니다.\n현장신청을 안내해 주세요.';
       nextScanBtn.style.display = 'block'; return;
@@ -324,7 +333,7 @@
       specialCard.style.display = 'block';
       specialCard.style.background = '#1c0a0a';
       specialCard.style.border = '1px solid #dc2626';
-      specialIcon.textContent = '⚠️';
+      specialIcon.textContent = '';
       specialTitle.textContent = '비조합원';
       specialMsg.textContent = '조합원 확인이 되지 않는 분입니다.\n현장신청 데이터가 저장되었습니다.';
       nextScanBtn.style.display = 'block'; return;
@@ -355,8 +364,10 @@
     if (res.ldap && res.ldap !== '-' && res.ldap !== '') fields.push({key:'LDAP',val:res.ldap});
     fields.push({key:'전화',val:res.phone || '-'});
     if (res.type === 'CHECKIN') fields.push({key:'신청',val:res.regStatus || '-'});
-    fields.push({key:'식사',val:res.lunch || '-'});
-    if (res.schedule && res.schedule !== '-') fields.push({key:'일정',val:res.schedule});
+    if (_enableMeal) fields.push({key:'식사',val:res.lunch || '-'});
+    if (_enableSchedule && res.schedule && res.schedule !== '-' && res.schedule !== 'undefined') {
+      fields.push({key:'일정',val:res.schedule});
+    }
     if (res.memberStatus) fields.push({key:'구분',val:res.memberStatus});
 
     resultFields.innerHTML = fields.map(function(f,i){
