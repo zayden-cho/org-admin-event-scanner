@@ -19,24 +19,8 @@
             -webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
         .app{max-width:480px;margin:0 auto;min-height:100dvh;padding:0 20px 40px}
 
-        /* ── 설정 화면 (GAS URL 입력) ── */
-        .setup-wrap{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-        .setup-title{font-size:18px;font-weight:800;margin-bottom:10px}
-        .setup-sub{font-size:13px;color:var(--text2);margin-bottom:24px;line-height:1.6}
-        .setup-input{
-            width:100%;min-height:56px;padding:0 16px;background:var(--surface);
-            border:2px solid var(--border);border-radius:var(--r);color:var(--text);
-            font-size:13px;font-family:var(--font);outline:none;margin-bottom:12px;
-        }
-        .setup-input:focus{border-color:var(--accent)}
-        .setup-btn{
-            width:100%;min-height:54px;background:linear-gradient(135deg,#FEE500,#e6cf00);
-            border:none;border-radius:var(--r);font-size:15px;font-weight:700;font-family:var(--font);
-            color:#000;cursor:pointer;
-        }
-
         /* ── PIN 화면 ── */
-        .pin-wrap{display:none;min-height:100dvh;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+        .pin-wrap{display:flex;min-height:100dvh;flex-direction:column;align-items:center;justify-content:center;text-align:center}
         .pin-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(254,229,0,.08);
             border:1px solid rgba(254,229,0,.2);border-radius:100px;padding:5px 14px;margin-bottom:20px}
         .pin-badge-dot{width:6px;height:6px;background:var(--accent);border-radius:50%}
@@ -147,15 +131,15 @@
         <div class="scanner-label">QR 코드 스캔</div>
         <div id="qr-reader"></div>
         <div class="scanner-status" id="scanner-status">카메라를 QR 코드에 가져다 대주세요</div>
-        <div class="scan-error" id="scan-error"></div>
-        <div class="dup-banner" id="dup-banner">
+        <div class="scan-error"  id="scan-error"></div>
+        <div class="dup-banner"  id="dup-banner">
             <div class="dup-banner-title">⚠️ 이미 처리된 코드</div>
             <div class="dup-banner-sub" id="dup-banner-sub"></div>
         </div>
         <div class="result-card no-dup" id="result-card">
             <div class="result-header">
                 <div class="status-badge" id="status-badge">
-                    <span class="status-dot" id="status-dot"></span>
+                    <span class="status-dot"  id="status-dot"></span>
                     <span class="status-text" id="status-text"></span>
                 </div>
                 <div class="result-time" id="result-time"></div>
@@ -168,9 +152,9 @@
         </div>
         <div class="special-card" id="special-card">
             <div class="special-card-inner">
-                <div class="special-icon" id="special-icon"></div>
+                <div class="special-icon"  id="special-icon"></div>
                 <div class="special-title" id="special-title"></div>
-                <div class="special-msg" id="special-msg"></div>
+                <div class="special-msg"   id="special-msg"></div>
             </div>
         </div>
         <button class="next-scan-btn" id="next-scan-btn">다음 참석자 스캔</button>
@@ -182,71 +166,68 @@
 
 <script>
     (function() {
-        var _pin = '';
-        var _scanner = null, _scanning = false, _processing = false;
-        var _enableMeal = true, _enableSchedule = true;  // getConfig 응답으로 갱신됨
+        var _pin        = '';
+        var _scanner    = null, _scanning = false, _processing = false;
+        var _enableMeal = false, _enableSchedule = false;
 
-        var pinWrap     = document.getElementById('pin-wrap');
-        var pinInput    = document.getElementById('pin-input');
-        var pinError    = document.getElementById('pin-error');
-        var pinBtn      = document.getElementById('pin-btn');
-        var scannerWrap = document.getElementById('scanner-wrap');
-        var scanStatus  = document.getElementById('scanner-status');
-        var scanError   = document.getElementById('scan-error');
-        var dupBanner   = document.getElementById('dup-banner');
-        var dupBannerSub= document.getElementById('dup-banner-sub');
-        var resultCard  = document.getElementById('result-card');
-        var statusBadge = document.getElementById('status-badge');
-        var statusDot   = document.getElementById('status-dot');
-        var statusText  = document.getElementById('status-text');
-        var resultTime  = document.getElementById('result-time');
-        var resultName  = document.getElementById('result-name');
-        var resultCorp  = document.getElementById('result-corp');
-        var resultFields= document.getElementById('result-fields');
-        var specialCard = document.getElementById('special-card');
-        var specialIcon = document.getElementById('special-icon');
-        var specialTitle= document.getElementById('special-title');
-        var specialMsg  = document.getElementById('special-msg');
-        var nextScanBtn = document.getElementById('next-scan-btn');
-        var logoutBtn   = document.getElementById('logout-btn');
-        var loading     = document.getElementById('loading');
+        var pinWrap      = document.getElementById('pin-wrap');
+        var pinInput     = document.getElementById('pin-input');
+        var pinError     = document.getElementById('pin-error');
+        var pinBtn       = document.getElementById('pin-btn');
+        var scannerWrap  = document.getElementById('scanner-wrap');
+        var scanStatus   = document.getElementById('scanner-status');
+        var scanError    = document.getElementById('scan-error');
+        var dupBanner    = document.getElementById('dup-banner');
+        var dupBannerSub = document.getElementById('dup-banner-sub');
+        var resultCard   = document.getElementById('result-card');
+        var statusBadge  = document.getElementById('status-badge');
+        var statusDot    = document.getElementById('status-dot');
+        var statusText   = document.getElementById('status-text');
+        var resultTime   = document.getElementById('result-time');
+        var resultName   = document.getElementById('result-name');
+        var resultCorp   = document.getElementById('result-corp');
+        var resultFields = document.getElementById('result-fields');
+        var specialCard  = document.getElementById('special-card');
+        var specialIcon  = document.getElementById('special-icon');
+        var specialTitle = document.getElementById('special-title');
+        var specialMsg   = document.getElementById('special-msg');
+        var nextScanBtn  = document.getElementById('next-scan-btn');
+        var logoutBtn    = document.getElementById('logout-btn');
+        var loading      = document.getElementById('loading');
 
         var BADGE_TYPES = {
-            CHECKIN:{bg:'rgba(34,197,94,.12)',dot:'#22c55e',text:'#22c55e',label:'참석확인 (사전신청)'},
-            ONSITE :{bg:'rgba(96,165,250,.12)',dot:'#60a5fa',text:'#60a5fa',label:'현장신청'}
+            CHECKIN: { bg:'rgba(34,197,94,.12)',  dot:'#22c55e', text:'#22c55e', label:'참석확인 (사전신청)' },
+            ONSITE:  { bg:'rgba(96,165,250,.12)', dot:'#60a5fa', text:'#60a5fa', label:'현장신청'            }
         };
 
-        /* ── 초기 진입: PIN 화면 바로 노출 ── */
-        pinWrap.style.display = 'flex';
-
         pinBtn.addEventListener('click', verifyPin);
-        pinInput.addEventListener('keydown', function(e){ if(e.key==='Enter') verifyPin(); });
+        pinInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') verifyPin(); });
         nextScanBtn.addEventListener('click', resumeScanner);
         logoutBtn.addEventListener('click', logout);
 
-        /* ── API 호출 (같은 도메인, CORS 불필요) ── */
-        function callGAS(action, payload) {
+        /* ── API 호출 (같은 도메인 /api/admin, CORS 불필요) ── */
+        function callAPI(action, payload) {
             var body = Object.assign({ action: action }, payload);
             return fetch('/api/admin', {
-                method: 'POST',
+                method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body:    JSON.stringify(body)
             }).then(function(res) { return res.json(); });
         }
 
-        /* ── PIN 확인 ── */
+        /* ── PIN 확인 + FEATURES 수신 (1번 요청으로 처리) ── */
         function verifyPin() {
             var pin = pinInput.value.trim();
             if (!pin) { pinError.textContent = 'PIN을 입력해 주세요.'; return; }
             setLoading(true);
-            callGAS('verifyAndConfig', { pin: pin })
+            callAPI('verifyAndConfig', { pin: pin })
                 .then(function(res) {
                     setLoading(false);
                     if (res.status === 'ok') {
-                        _pin = pin;
-                        _enableMeal     = res.enableMeal;
-                        _enableSchedule = res.enableSchedule;
-                        pinWrap.style.display = 'none';
+                        _pin            = pin;
+                        _enableMeal     = res.enableMeal     === true;
+                        _enableSchedule = res.enableSchedule === true;
+                        pinWrap.style.display     = 'none';
                         scannerWrap.style.display = 'flex';
                         startScanner();
                     } else {
@@ -256,17 +237,17 @@
                 })
                 .catch(function() {
                     setLoading(false);
-                    pinError.textContent = '서버 연결에 실패했습니다. URL을 확인해 주세요.';
+                    pinError.textContent = '서버 연결에 실패했습니다.';
                 });
         }
 
         /* ── QR 스캐너 ── */
         function startScanner() {
             if (_scanner) { _scanner.clear(); }
-            _scanner = new Html5Qrcode("qr-reader");
+            _scanner  = new Html5Qrcode('qr-reader');
             _scanning = true;
             _scanner.start(
-                { facingMode: "environment" },
+                { facingMode: 'environment' },
                 { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
                 onScanSuccess,
                 function() {}
@@ -282,7 +263,7 @@
             scanStatus.textContent = '처리 중...';
             hideResults();
             setLoading(true);
-            callGAS('scanQR', { qr: decodedText, pin: _pin })
+            callAPI('scanQR', { qr: decodedText, pin: _pin })
                 .then(function(res) {
                     setLoading(false); _processing = false;
                     scanStatus.textContent = '스캔 완료 — 결과를 확인해 주세요';
@@ -298,12 +279,12 @@
 
         function resumeScanner() {
             hideResults();
-            scanStatus.textContent = '카메라를 QR 코드에 가져다 대주세요';
+            scanStatus.textContent    = '카메라를 QR 코드에 가져다 대주세요';
             nextScanBtn.style.display = 'none';
             startScanner();
         }
 
-        /* ── 결과 표시 (기존 Admin.html과 동일 로직) ── */
+        /* ── 결과 표시 ── */
         function showResult(res) {
             if (res.status === 'error' || res.status === 'unauthorized') {
                 showScanError(res.message || '오류가 발생했습니다.');
@@ -314,33 +295,33 @@
                 nextScanBtn.style.display = 'block'; return;
             }
             if (res.type === 'NOSUB') {
-                specialCard.style.display = 'block';
                 specialCard.style.background = '#1c1500';
-                specialCard.style.border = '1px solid #b45309';
-                specialIcon.textContent = '📋';
+                specialCard.style.border     = '1px solid #b45309';
+                specialIcon.textContent  = '📋';
                 specialTitle.textContent = '사전신청 없음';
-                specialMsg.textContent = '사전신청을 하지 않은 분입니다.\n현장신청을 안내해 주세요.';
+                specialMsg.textContent   = '사전신청을 하지 않은 분입니다.\n현장신청을 안내해 주세요.';
+                specialCard.style.display = 'block';
                 nextScanBtn.style.display = 'block'; return;
             }
             if (res.type === 'NOMEM') {
-                specialCard.style.display = 'block';
                 specialCard.style.background = '#1c0a0a';
-                specialCard.style.border = '1px solid #dc2626';
-                specialIcon.textContent = '⚠️';
+                specialCard.style.border     = '1px solid #dc2626';
+                specialIcon.textContent  = '⚠️';
                 specialTitle.textContent = '비조합원';
-                specialMsg.textContent = '조합원 확인이 되지 않는 분입니다.\n현장신청 데이터가 저장되었습니다.';
+                specialMsg.textContent   = '조합원 확인이 되지 않는 분입니다.\n현장신청 데이터가 저장되었습니다.';
+                specialCard.style.display = 'block';
                 nextScanBtn.style.display = 'block'; return;
             }
 
             var b = BADGE_TYPES[res.type] || { bg:'rgba(255,255,255,.1)', dot:'#fff', text:'#fff', label:res.type };
 
             if (res.alreadyConfirmed) {
-                dupBanner.style.display = 'block';
+                dupBanner.style.display  = 'block';
                 dupBannerSub.textContent = res.confirmedAt ? res.confirmedAt + '에 이미 처리됨' : '이미 처리된 코드';
-                resultCard.className = 'result-card has-dup';
+                resultCard.className     = 'result-card has-dup';
             } else {
                 dupBanner.style.display = 'none';
-                resultCard.className = 'result-card no-dup';
+                resultCard.className    = 'result-card no-dup';
             }
 
             statusBadge.style.background = b.bg;
@@ -354,42 +335,49 @@
             resultCorp.textContent = res.corp || '-';
 
             var fields = [];
-            if (res.ldap && res.ldap !== '-' && res.ldap !== '') fields.push({key:'LDAP',val:res.ldap});
-            fields.push({key:'전화',val:res.phone || '-'});
-            if (res.type === 'CHECKIN') fields.push({key:'신청',val:res.regStatus || '-'});
-            if (_enableMeal) fields.push({key:'식사',val:res.lunch || '-'});
+            if (res.ldap && res.ldap !== '-' && res.ldap !== '') fields.push({ key:'LDAP', val:res.ldap });
+            fields.push({ key:'전화', val:res.phone || '-' });
+            if (res.type === 'CHECKIN') fields.push({ key:'신청', val:res.regStatus || '-' });
+            if (_enableMeal) fields.push({ key:'식사', val:res.lunch || '-' });
             if (_enableSchedule && res.schedule && res.schedule !== '-' && res.schedule !== 'undefined') {
-                fields.push({key:'일정',val:res.schedule});
+                fields.push({ key:'일정', val:res.schedule });
             }
-            if (res.memberStatus) fields.push({key:'구분',val:res.memberStatus});
+            if (res.memberStatus) fields.push({ key:'구분', val:res.memberStatus });
 
-            resultFields.innerHTML = fields.map(function(f,i){
-                var last = i===fields.length-1 ? ' style="border-bottom:none"' : '';
-                return '<div class="result-field"'+last+'><span class="field-key">'+f.key+'</span><span class="field-val">'+f.val+'</span></div>';
+            resultFields.innerHTML = fields.map(function(f, i) {
+                var last = i === fields.length - 1 ? ' style="border-bottom:none"' : '';
+                return '<div class="result-field"' + last + '>'
+                    + '<span class="field-key">' + f.key + '</span>'
+                    + '<span class="field-val">' + f.val + '</span>'
+                    + '</div>';
             }).join('');
 
-            resultCard.style.display = 'block';
+            resultCard.style.display  = 'block';
             nextScanBtn.style.display = 'block';
         }
 
-        function showScanError(msg) { scanError.textContent = msg; scanError.style.display = 'block'; }
-        function hideResults() {
-            resultCard.style.display='none'; specialCard.style.display='none';
-            dupBanner.style.display='none'; scanError.style.display='none';
+        function showScanError(msg) {
+            scanError.textContent   = msg;
+            scanError.style.display = 'block';
         }
-
+        function hideResults() {
+            resultCard.style.display  = 'none';
+            specialCard.style.display = 'none';
+            dupBanner.style.display   = 'none';
+            scanError.style.display   = 'none';
+        }
         function logout() {
             _pin = '';
             if (_scanner) { _scanner.stop().catch(function(){}); _scanner = null; }
             _scanning = false; _processing = false;
             hideResults();
-            nextScanBtn.style.display = 'none';
-            scannerWrap.style.display = 'none';
-            pinWrap.style.display = 'flex';
-            pinInput.value = ''; pinError.textContent = '';
-            scanStatus.textContent = '카메라를 QR 코드에 가져다 대주세요';
+            nextScanBtn.style.display   = 'none';
+            scannerWrap.style.display   = 'none';
+            pinWrap.style.display       = 'flex';
+            pinInput.value              = '';
+            pinError.textContent        = '';
+            scanStatus.textContent      = '카메라를 QR 코드에 가져다 대주세요';
         }
-
         function setLoading(on) { loading.classList.toggle('show', on); }
     })();
 </script>
