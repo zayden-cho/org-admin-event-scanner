@@ -1,0 +1,171 @@
+# ========================================
+# Dependencies
+# ========================================
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ========================================
+# Environment Variables
+# ========================================
+# 모든 환경 파일 (실제 값 포함)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# 로컬 오버라이드
+.env.*.local
+
+# ========================================
+# Credentials & Secrets
+# ========================================
+# Google Service Account
+credentials/
+backend/src/core/config/credentials.json
+**/credentials.json
+
+# API Keys & Secrets
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ========================================
+# Build Outputs
+# ========================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+*.tsbuildinfo
+
+# ========================================
+# Cache & Temp
+# ========================================
+# Vite
+.vite/
+
+# Bun
+.bun-cache/
+
+# General
+.cache/
+.temp/
+.tmp/
+*.tmp
+*.temp
+
+# ESLint
+.eslintcache
+
+# ========================================
+# Logs
+# ========================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ========================================
+# Testing & Coverage
+# ========================================
+coverage/
+.nyc_output/
+*.lcov
+.jest-cache/
+
+# ========================================
+# OS Files
+# ========================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ========================================
+# IDE & Editors
+# ========================================
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ========================================
+# Lock Files
+# ========================================
+# npm (Bun 사용 시 불필요)
+package-lock.json
+
+# yarn (선택적)
+# yarn.lock
+
+# ========================================
+# Misc
+# ========================================
+*.pid
+*.seed
+*.pid.lock
+*.gz
+
+# ========================================
+# Project Specific
+# ========================================
+# Backend
+backend/dist/
+backend/build/
+backend/.env.local
+
+# Frontend
+frontend/dist/
+frontend/build/
+frontend/.env.local
