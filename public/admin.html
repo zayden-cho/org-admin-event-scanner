@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>크루유니언 — 운영진 QR 스캐너</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0f0e11">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -15,12 +17,20 @@
             --font:'Pretendard',-apple-system,'Apple SD Gothic Neo',sans-serif;
         }
         html,body{height:100%}
-        body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;
+        body{background:#0a0910;color:var(--text);font-family:var(--font);font-size:16px;
             -webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
-        .app{max-width:480px;margin:0 auto;min-height:100dvh;padding:0 20px 40px}
+        .app{
+            max-width:480px;margin:0 auto;min-height:100dvh;
+            padding:0 20px 40px;
+            padding-left:max(20px,env(safe-area-inset-left));
+            padding-right:max(20px,env(safe-area-inset-right));
+            padding-bottom:max(40px,env(safe-area-inset-bottom));
+            background:var(--bg);
+            box-shadow:0 0 40px rgba(0,0,0,.4);
+        }
 
         /* ── PIN 화면 ── */
-        .pin-wrap{display:flex;min-height:100dvh;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+        .pin-wrap{display:flex;min-height:100dvh;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-bottom:env(safe-area-inset-bottom)}
         .pin-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(254,229,0,.08);
             border:1px solid rgba(254,229,0,.2);border-radius:100px;padding:5px 14px;margin-bottom:20px}
         .pin-badge-dot{width:6px;height:6px;background:var(--accent);border-radius:50%}

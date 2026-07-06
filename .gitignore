@@ -169,3 +169,9 @@ backend/.env.local
 frontend/dist/
 frontend/build/
 frontend/.env.local
+
+# 로컬 환경변수 (서비스 계정 키 등 민감 정보)
+.dev.vars
+
+# Wrangler 로컬 캐시
+.wrangler/
