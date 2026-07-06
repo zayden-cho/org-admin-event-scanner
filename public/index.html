@@ -274,25 +274,24 @@
         </div>
     </div>
 
-    <!-- NOSUB 화면 (사전신청 없음) -->
+    <!-- NOSUB 화면 (신청 여부 노출 없음) -->
     <div class="screen" id="s-nosub">
         <div class="qr-result-wrap">
-            <div class="qr-title" style="color:#b45309">사전신청 없음</div>
-            <div class="qr-message">사전신청 내역이 없습니다.<br>아래 QR 코드를 운영진에게 보여주세요.</div>
-            <div class="qr-card qr-card-warn" id="qr-card-nosub"><div id="qr-code-nosub"></div></div>
+            <div class="qr-title">확인 완료</div>
+            <div class="qr-message">아래 QR 코드를 운영진에게 보여주세요.</div>
+            <div class="qr-card" id="qr-card-nosub"><div id="qr-code-nosub"></div></div>
             <div class="qr-result-btns">
-                <button class="btn btn-action" id="btn-nosub-register">현장신청하러 가기</button>
-                <button class="btn btn-ghost"  id="btn-nosub-home">처음으로</button>
+                <button class="btn btn-ghost" id="btn-nosub-home">처음으로</button>
             </div>
         </div>
     </div>
 
-    <!-- NOMEM 화면 (비조합원) -->
+    <!-- NOMEM 화면 (신청 여부 노출 없음) -->
     <div class="screen" id="s-nomem">
         <div class="qr-result-wrap">
-            <div class="qr-title" style="color:#dc2626">조합원 확인 불가</div>
-            <div class="qr-message">조합원 확인이 되지 않습니다.<br>아래 QR 코드를 운영진에게 보여주세요.</div>
-            <div class="qr-card qr-card-error" id="qr-card-nomem"><div id="qr-code-nomem"></div></div>
+            <div class="qr-title">확인 완료</div>
+            <div class="qr-message">아래 QR 코드를 운영진에게 보여주세요.</div>
+            <div class="qr-card" id="qr-card-nomem"><div id="qr-code-nomem"></div></div>
             <div class="qr-result-btns">
                 <button class="btn btn-ghost" id="btn-nomem-home">처음으로</button>
             </div>
@@ -391,7 +390,7 @@
             document.getElementById('btn-checkin-submit').addEventListener('click',  submitCheckIn);
             document.getElementById('btn-register-submit').addEventListener('click', submitRegister);
             document.getElementById('btn-qr-home').addEventListener('click',         function() { goTo('home'); });
-            document.getElementById('btn-nosub-register').addEventListener('click',  function() { goTo('register'); });
+            // btn-nosub-register 제거됨
             document.getElementById('btn-nosub-home').addEventListener('click',      function() { goTo('home'); });
             document.getElementById('btn-nomem-home').addEventListener('click',      function() { goTo('home'); });
 
