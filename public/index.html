@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>참석 접수</title>
+    <!-- QR 코드 생성 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #f5f4f0;
+            --surface: #ffffff;
+            --border:  #e2dfd8;
+            --accent:  #FEE500;
+            --text:    #1a1916;
+            --text2:   #6b6760;
+            --text3:   #a8a49e;
+            --r:       16px;
+            --font:    'Pretendard', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+        }
+
+        html { height: 100%; }
+        body {
+            min-height: 100%; background: var(--bg); color: var(--text);
+            font-family: var(--font); font-size: 16px; line-height: 1.5;
+            -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased;
+        }
+        .app { max-width: 480px; margin: 0 auto; min-height: 100dvh; }
+
+        /* 화면 전환 */
+        .screen { display: none; flex-direction: column; min-height: 100dvh; padding: 0 20px 40px; }
+        .screen.active { display: flex; }
+        .screen.slide-in { animation: slideIn .22s ease forwards; }
+        @keyframes slideIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+
+        /* 상단 헤더 */
+        .topbar { display:flex; align-items:center; gap:10px; padding:16px 0 0; margin-bottom:28px; }
+        .back-btn {
+            width:44px; height:44px; background:var(--surface); border:1px solid var(--border);
+            border-radius:12px; color:var(--text); font-size:18px; cursor:pointer;
+            display:flex; align-items:center; justify-content:center; flex-shrink:0;
+        }
+        .back-btn:active { background:#e8e5df; }
+        .topbar-title { font-size:18px; font-weight:700; letter-spacing:-.02em; }
+
+        /* 홈 */
+        .home-wrap { flex:1; display:flex; flex-direction:column; justify-content:center; padding:40px 0; }
+        .home-krew-badge {
+            display:inline-flex; align-items:center; gap:7px;
+            background:#1a1916; border:1px solid #1a1916;
+            border-radius:100px; padding:6px 14px; margin-bottom:24px;
+        }
+        .home-krew-dot { width:6px; height:6px; background:var(--accent); border-radius:50%; flex-shrink:0; }
+        .home-krew { font-size:12px; font-weight:700; letter-spacing:.1em; color:var(--accent); text-transform:uppercase; }
+        .home-title { font-size:32px; font-weight:900; letter-spacing:-.04em; line-height:1.15; margin-bottom:12px; word-break:keep-all; }
+        .home-desc  { font-size:14px; color:var(--text2); margin-bottom:44px; line-height:1.65; }
+        .home-section-label { font-size:11px; font-weight:600; color:var(--text3); letter-spacing:.1em; text-transform:uppercase; margin-bottom:12px; }
+        .home-btns { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .home-btn {
+            min-height:150px; border:none; border-radius:20px; cursor:pointer;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            padding:20px 14px; text-align:center; transition:transform .12s,opacity .12s;
+        }
+        .home-btn:active { transform:scale(.96); opacity:.9; }
+        .home-btn-checkin {
+            background:linear-gradient(145deg,#FEE500 0%,#e6cf00 100%);
+            color:#000; box-shadow:0 8px 24px rgba(180,160,0,.22);
+        }
+        .home-btn-register {
+            background:linear-gradient(145deg,#f5f3ee 0%,#e8e4db 100%);
+            color:#111017; box-shadow:0 8px 24px rgba(0,0,0,.12);
+        }
+        .home-btn-register.disabled { background:var(--surface); border:1.5px solid var(--border); color:var(--text3); box-shadow:none; cursor:not-allowed; opacity:.5; }
+        .home-btn-text strong { display:block; font-size:24px; font-weight:900; letter-spacing:-.04em; line-height:1.2; margin-bottom:8px; }
+        .home-btn-text span   { font-size:11px; line-height:1.45; word-break:keep-all; opacity:.6; }
+        .home-btn-checkin  .home-btn-text span { color:#000; }
+        .home-btn-register .home-btn-text span { color:#111017; }
+
+        /* 폼 공통 */
+        .screen-desc {
+            font-size:13.5px; color:var(--text2); line-height:1.7; margin-bottom:28px;
+            padding:14px 16px; background:var(--surface); border-radius:12px; border-left:3px solid var(--accent);
+        }
+        .form-group { margin-bottom:18px; }
+        .form-label { display:block; font-size:13px; font-weight:600; color:var(--text2); margin-bottom:8px; }
+        .req { color:var(--accent); margin-left:2px; }
+        .opt { color:var(--text3); font-weight:400; font-size:12px; margin-left:4px; }
+        .form-input, .form-select {
+            width:100%; min-height:58px; padding:0 16px;
+            background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r);
+            color:var(--text); font-size:16px; font-family:var(--font); outline:none;
+            transition:border-color .2s,box-shadow .2s; -webkit-appearance:none; appearance:none;
+        }
+        .form-input:focus, .form-select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(254,229,0,.15); }
+        .form-input::placeholder { color:var(--text3); }
+        .form-select option { background:#fff; }
+        .select-wrap { position:relative; }
+        .select-wrap::after { content:'▾'; position:absolute; right:16px; top:50%; transform:translateY(-50%); color:var(--text3); pointer-events:none; }
+        .form-hint { font-size:12px; color:var(--text3); margin-top:6px; padding-left:4px; }
+        .form-submit-wrap { margin-top:auto; padding-top:24px; }
+
+        /* 점심 토글 */
+        .lunch-toggle { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .lunch-btn {
+            min-height:56px; border-radius:var(--r); border:1.5px solid var(--border);
+            background:var(--surface); color:var(--text2);
+            font-size:15px; font-weight:600; font-family:var(--font); cursor:pointer; transition:all .15s;
+        }
+        .lunch-btn.selected { background:var(--accent); border-color:var(--accent); color:#000; font-weight:700; }
+        .lunch-btn:active { transform:scale(.97); }
+
+        /* 참여일정 */
+        .schedule-options { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .schedule-btn {
+            min-height:100px; border-radius:var(--r); border:1.5px solid var(--border);
+            background:var(--surface); color:var(--text); font-family:var(--font);
+            cursor:pointer; padding:14px 12px; text-align:center; transition:all .15s; white-space:pre-line;
+        }
+        .schedule-btn strong { display:block; font-size:16px; font-weight:800; letter-spacing:-.03em; margin-bottom:4px; }
+        .schedule-btn span   { font-size:11px; color:var(--text2); line-height:1.5; }
+        .schedule-btn.selected { background:#1a1916; border-color:#1a1916; color:#fff; }
+        .schedule-btn.selected span { color:rgba(255,255,255,.6); }
+        .schedule-btn:active { transform:scale(.97); }
+
+        /* 버튼 */
+        .btn {
+            width:100%; min-height:62px; border:none; border-radius:var(--r);
+            font-size:17px; font-weight:700; font-family:var(--font); cursor:pointer;
+            display:flex; align-items:center; justify-content:center; gap:8px;
+            letter-spacing:-.02em; transition:transform .12s,opacity .12s;
+        }
+        .btn:active:not(:disabled) { transform:scale(.97); opacity:.9; }
+        .btn:disabled { opacity:.35; cursor:not-allowed; }
+        .btn-primary { background:linear-gradient(135deg,#FEE500,#e6cf00); color:#000; box-shadow:0 6px 20px rgba(180,160,0,.3); }
+        .btn-ghost   { background:transparent; border:1.5px solid var(--border); color:var(--text2); }
+        .btn-ghost:active:not(:disabled) { background:var(--surface); }
+        .btn-action  { background:var(--surface); border:1.5px solid #1a1916; color:#1a1916; }
+
+        /* QR 결과 화면 */
+        .qr-result-wrap {
+            flex:1; display:flex; flex-direction:column;
+            align-items:center; justify-content:center; text-align:center; padding:32px 0 20px;
+        }
+        .qr-title   { font-size:24px; font-weight:900; letter-spacing:-.04em; margin-bottom:8px; }
+        .qr-message { font-size:14px; color:var(--text2); margin-bottom:28px; line-height:1.65; }
+        .qr-card {
+            width:260px; height:260px;
+            background:#fff; border-radius:20px;
+            display:flex; align-items:center; justify-content:center;
+            padding:16px; margin-bottom:28px;
+            box-shadow:0 4px 20px rgba(0,0,0,.08);
+        }
+        .qr-card canvas, .qr-card img { width:228px !important; height:228px !important; }
+
+        /* NOSUB / NOMEM 전용 카드 배경 */
+        .qr-card-warn { background:#fffbeb; border:2px solid #fde68a; }
+        .qr-card-error { background:#fff5f5; border:2px solid #fca5a5; }
+
+        .qr-result-btns { width:100%; display:flex; flex-direction:column; gap:10px; }
+
+        /* 로딩 */
+        .loading-overlay {
+            position:fixed; inset:0; background:rgba(240,238,234,.85);
+            backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+            display:none; flex-direction:column; align-items:center; justify-content:center; gap:16px; z-index:200;
+        }
+        .loading-overlay.show { display:flex; }
+        .spinner { width:46px; height:46px; border:4px solid rgba(180,160,0,.2); border-top-color:var(--accent); border-radius:50%; animation:spin .75s linear infinite; }
+        .loading-text { font-size:14px; color:var(--text2); }
+        @keyframes spin { to{transform:rotate(360deg)} }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+
+    <!-- 홈 -->
+    <div class="screen active" id="s-home">
+        <div class="home-wrap">
+            <div class="home-krew-badge">
+                <span class="home-krew-dot"></span>
+                <span class="home-krew">크루유니언</span>
+            </div>
+            <div class="home-title"><span id="event-title">참석 접수</span></div>
+            <div class="home-desc">아래에서 해당되는 항목을 선택해 주세요.</div>
+            <div class="home-section-label">항목 선택</div>
+            <div class="home-btns">
+                <button class="home-btn home-btn-checkin" id="btn-checkin">
+          <span class="home-btn-text">
+            <strong>참석 확인</strong>
+            <span>사전 신청 하신 분들의 출석 확인</span>
+          </span>
+                </button>
+                <button class="home-btn home-btn-register" id="btn-register">
+          <span class="home-btn-text">
+            <strong>현장 신청</strong>
+            <span id="register-sub">현장에서 바로 신청하시는 분들</span>
+          </span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 참석확인 폼 -->
+    <div class="screen" id="s-checkin">
+        <div class="topbar">
+            <button class="back-btn" id="btn-checkin-back">←</button>
+            <div class="topbar-title">참석 확인</div>
+        </div>
+        <div class="screen-desc">사전 신청 시 입력하신 <strong>법인·전화번호</strong>가 정확히 일치해야 합니다.</div>
+        <div class="form-group">
+            <label class="form-label" for="ci-corp">법인 <span class="req">*</span></label>
+            <div class="select-wrap">
+                <select class="form-select" id="ci-corp"><option value="">법인을 선택해 주세요</option></select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="ci-phone">전화번호 <span class="req">*</span></label>
+            <input class="form-input" id="ci-phone" type="tel" placeholder="01012345678" autocomplete="tel" inputmode="numeric" />
+            <div class="form-hint">숫자만 입력하면 자동으로 000-0000-0000 형식으로 표시돼요</div>
+        </div>
+        <div class="form-group" id="ci-lunch-group">
+            <label class="form-label" id="ci-meal-label"><span req-text></span> <span class="req">*</span></label>
+            <div class="lunch-toggle">
+                <button type="button" class="lunch-btn" id="ci-lunch-yes" data-value="예">먹어요</button>
+                <button type="button" class="lunch-btn" id="ci-lunch-no"  data-value="아니오">안먹어요</button>
+            </div>
+            <input type="hidden" id="ci-lunch" value="" />
+        </div>
+        <div class="form-submit-wrap">
+            <button class="btn btn-primary" id="btn-checkin-submit">참석 확인하기</button>
+        </div>
+    </div>
+
+    <!-- 현장신청 폼 -->
+    <div class="screen" id="s-register">
+        <div class="topbar">
+            <button class="back-btn" id="btn-register-back">←</button>
+            <div class="topbar-title">현장 신청</div>
+        </div>
+        <div class="screen-desc">현장에서 처음 참여하시는 분들을 위한 신청 화면입니다.</div>
+        <div class="form-group">
+            <label class="form-label" for="re-corp">법인 <span class="req">*</span></label>
+            <div class="select-wrap">
+                <select class="form-select" id="re-corp"><option value="">법인을 선택해 주세요</option></select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="re-ldap">LDAP <span class="opt">(없으면 빈칸)</span></label>
+            <input class="form-input" id="re-ldap" type="text" placeholder="영문 아이디 (없으면 빈칸)" autocomplete="off" inputmode="email" />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="re-name">이름 <span class="req">*</span></label>
+            <input class="form-input" id="re-name" type="text" placeholder="홍길동" autocomplete="name" inputmode="text" />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="re-phone">전화번호 <span class="req">*</span></label>
+            <input class="form-input" id="re-phone" type="tel" placeholder="01012345678" autocomplete="tel" inputmode="numeric" />
+            <div class="form-hint">숫자만 입력하면 자동으로 000-0000-0000 형식으로 표시돼요</div>
+        </div>
+        <div class="form-group" id="re-lunch-group">
+            <label class="form-label" id="re-meal-label"><span req-text></span> <span class="req">*</span></label>
+            <div class="lunch-toggle">
+                <button type="button" class="lunch-btn" id="re-lunch-yes" data-value="예">먹어요</button>
+                <button type="button" class="lunch-btn" id="re-lunch-no"  data-value="아니오">안먹어요</button>
+            </div>
+            <input type="hidden" id="re-lunch" value="" />
+        </div>
+        <!-- 참여일정 (미사용시 아래 블록 주석 처리) -->
+        <div class="form-group" id="schedule-group" style="display:none">
+            <label class="form-label">참여 일정 선택 <span class="req">*</span></label>
+            <div class="schedule-options" id="schedule-options"></div>
+            <input type="hidden" id="re-schedule" value="" />
+        </div>
+        <div class="form-submit-wrap">
+            <button class="btn btn-primary" id="btn-register-submit">현장 신청하기</button>
+        </div>
+    </div>
+
+    <!-- QR 결과 화면 (CHECKIN / ONSITE 성공) -->
+    <div class="screen" id="s-qr">
+        <div class="qr-result-wrap">
+            <div class="qr-title"  id="qr-title"></div>
+            <div class="qr-message" id="qr-message"></div>
+            <div class="qr-card" id="qr-card">
+                <div id="qr-code"></div>
+            </div>
+            <div class="qr-result-btns">
+                <button class="btn btn-ghost" id="btn-qr-home">처음으로</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOSUB 화면 (사전신청 없음) -->
+    <div class="screen" id="s-nosub">
+        <div class="qr-result-wrap">
+            <div class="qr-title" style="color:#b45309">사전신청 없음</div>
+            <div class="qr-message">사전신청 내역이 없습니다.<br>아래 QR 코드를 운영진에게 보여주세요.</div>
+            <div class="qr-card qr-card-warn" id="qr-card-nosub">
+                <div id="qr-code-nosub"></div>
+            </div>
+            <div class="qr-result-btns">
+                <button class="btn btn-action" id="btn-nosub-register">현장신청하러 가기</button>
+                <button class="btn btn-ghost"  id="btn-nosub-home">처음으로</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOMEM 화면 (비조합원) -->
+    <div class="screen" id="s-nomem">
+        <div class="qr-result-wrap">
+            <div class="qr-title" style="color:#dc2626">조합원 확인 불가</div>
+            <div class="qr-message">조합원 확인이 되지 않습니다.<br>아래 QR 코드를 운영진에게 보여주세요.</div>
+            <div class="qr-card qr-card-error" id="qr-card-nomem">
+                <div id="qr-code-nomem"></div>
+            </div>
+            <div class="qr-result-btns">
+                <button class="btn btn-ghost" id="btn-nomem-home">처음으로</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">처리 중...</div>
+</div>
+
+<script>
+    (function() {
+        var CORPS = [], ON_SITE_OPEN = true, ENABLE_MEAL = true, MEAL_LABEL = '식사', ENABLE_SCHEDULE = false, SCHEDULE_OPTIONS = null;
+
+        fetch('/api/config')
+            .then(function(r) { return r.json(); })
+            .then(function(cfg) {
+                CORPS           = cfg.corps || [];
+                ON_SITE_OPEN    = cfg.onSiteOpen !== false;
+                ENABLE_MEAL     = cfg.enableMeal !== false;
+                MEAL_LABEL      = cfg.mealLabel || '식사';
+                ENABLE_SCHEDULE = cfg.enableSchedule === true;
+                SCHEDULE_OPTIONS = cfg.scheduleOptions || null;
+                var t = document.getElementById('event-title');
+                if (t) { t.textContent = cfg.eventTitle || '참석 접수'; document.title = cfg.eventTitle || '참석 접수'; }
+                initPage();
+            })
+            .catch(function() { initPage(); });
+
+        function initPage() {
+
+            /* ── 초기화 ── */
+            ['ci-corp','re-corp'].forEach(function(id) {
+                var sel = document.getElementById(id);
+                CORPS.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c; opt.textContent = c;
+                    sel.appendChild(opt);
+                });
+            });
+
+            if (!ON_SITE_OPEN) {
+                var btn = document.getElementById('btn-register');
+                var sub = document.getElementById('register-sub');
+                btn.classList.add('disabled');
+                btn.onclick = null;
+                sub.textContent = '현재 현장 신청이 마감되었어요';
+            }
+
+            // 식사 라벨 동적 반영 (예: "점심", "저녁", "간식")
+            document.getElementById('ci-meal-label').firstElementChild.textContent = MEAL_LABEL + ' 식사 여부';
+            document.getElementById('re-meal-label').firstElementChild.textContent = MEAL_LABEL + ' 식사 여부';
+
+            // 식사 기능 비활성 시 양쪽 폼에서 숨김
+            if (!ENABLE_MEAL) {
+                document.getElementById('ci-lunch-group').style.display = 'none';
+                document.getElementById('re-lunch-group').style.display = 'none';
+            }
+
+            if (ENABLE_SCHEDULE && SCHEDULE_OPTIONS && SCHEDULE_OPTIONS.length > 0) {
+                var grp  = document.getElementById('schedule-group');
+                var cont = document.getElementById('schedule-options');
+                grp.style.display = 'block';
+                SCHEDULE_OPTIONS.forEach(function(opt) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button'; btn.className = 'schedule-btn'; btn.dataset.value = opt.value;
+                    btn.innerHTML = '<strong>' + opt.label + '</strong><span>' + opt.sub.replace(/\n/g,'<br>') + '</span>';
+                    btn.addEventListener('click', function() {
+                        document.querySelectorAll('.schedule-btn').forEach(function(b) { b.classList.remove('selected'); });
+                        this.classList.add('selected');
+                        document.getElementById('re-schedule').value = this.dataset.value;
+                    });
+                    cont.appendChild(btn);
+                });
+            }
+
+            /* ── 이벤트 바인딩 ── */
+            document.getElementById('btn-checkin').addEventListener('click', function() { goTo('checkin'); });
+            document.getElementById('btn-register').addEventListener('click', function() {
+                if (!ON_SITE_OPEN) return;
+                goTo('register');
+            });
+            document.getElementById('btn-checkin-back').addEventListener('click', function()  { goTo('home'); });
+            document.getElementById('btn-register-back').addEventListener('click', function()  { goTo('home'); });
+            document.getElementById('btn-checkin-submit').addEventListener('click', submitCheckIn);
+            document.getElementById('btn-register-submit').addEventListener('click', submitRegister);
+            document.getElementById('btn-qr-home').addEventListener('click', function() { goTo('home'); });
+            document.getElementById('btn-nosub-register').addEventListener('click', function() { goTo('register'); });
+            document.getElementById('btn-nosub-home').addEventListener('click', function() { goTo('home'); });
+            document.getElementById('btn-nomem-home').addEventListener('click', function() { goTo('home'); });
+
+            // 점심 토글
+            [['ci-lunch-yes','ci-lunch-no','ci-lunch'],['re-lunch-yes','re-lunch-no','re-lunch']].forEach(function(ids) {
+                [ids[0],ids[1]].forEach(function(id) {
+                    document.getElementById(id).addEventListener('click', function() {
+                        document.getElementById(ids[0]).classList.remove('selected');
+                        document.getElementById(ids[1]).classList.remove('selected');
+                        this.classList.add('selected');
+                        document.getElementById(ids[2]).value = this.dataset.value;
+                    });
+                });
+            });
+
+            // 전화번호 포맷
+            function applyPhoneFormat(input) {
+                var d = input.value.replace(/[^0-9]/g,'').slice(0,11);
+                input.value = d.length<=3 ? d : d.length<=7 ? d.slice(0,3)+'-'+d.slice(3) : d.slice(0,3)+'-'+d.slice(3,7)+'-'+d.slice(7);
+            }
+            ['ci-phone','re-phone'].forEach(function(id) {
+                var el = document.getElementById(id);
+                el.addEventListener('input', function() { applyPhoneFormat(this); });
+                el.addEventListener('paste', function() { setTimeout(function() { applyPhoneFormat(el); }, 0); });
+            });
+
+            /* ── 화면 전환 ── */
+            function resetForm(screenId) {
+                var sc = document.getElementById(screenId);
+                sc.querySelectorAll('input').forEach(function(el) { el.value=''; });
+                sc.querySelectorAll('select').forEach(function(el) { el.selectedIndex=0; });
+                sc.querySelectorAll('.lunch-btn, .schedule-btn').forEach(function(b) { b.classList.remove('selected'); });
+            }
+
+            function goTo(id) {
+                document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active','slide-in'); });
+                if (id==='checkin')  resetForm('s-checkin');
+                if (id==='register') resetForm('s-register');
+                var target = document.getElementById('s-'+id);
+                target.classList.add('active');
+                requestAnimationFrame(function() { target.classList.add('slide-in'); });
+                window.scrollTo({top:0,behavior:'instant'});
+            }
+
+            function setLoading(on) { document.getElementById('loading').classList.toggle('show', on); }
+
+            /* ── QR 생성 ── */
+            function generateQR(containerId, text) {
+                var container = document.getElementById(containerId);
+                container.innerHTML = '';
+                new QRCode(container, {
+                    text: text, width: 228, height: 228,
+                    colorDark: '#000000', colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            }
+
+            /* ── 결과 처리 ── */
+            function handleResult(res) {
+                if (res.status === 'error') {
+                    alert(res.message || '오류가 발생했습니다.\n운영진에게 문의하세요.');
+                    return;
+                }
+                var qrString = res.qrType + ':' + res.qrId;
+                if (res.qrType === 'CHECKIN') {
+                    document.getElementById('qr-title').textContent   = '참석 확인 완료';
+                    document.getElementById('qr-message').textContent = '아래 QR 코드를 운영진에게 보여주세요.';
+                    document.getElementById('qr-card').className = 'qr-card';
+                    generateQR('qr-code', qrString);
+                    goTo('qr');
+                } else if (res.qrType === 'ONSITE') {
+                    document.getElementById('qr-title').textContent   = '현장신청 완료';
+                    document.getElementById('qr-message').textContent = '아래 QR 코드를 운영진에게 보여주세요.';
+                    document.getElementById('qr-card').className = 'qr-card';
+                    generateQR('qr-code', qrString);
+                    goTo('qr');
+                } else if (res.qrType === 'NOSUB') {
+                    generateQR('qr-code-nosub', qrString);
+                    goTo('nosub');
+                } else if (res.qrType === 'NOMEM') {
+                    generateQR('qr-code-nomem', qrString);
+                    goTo('nomem');
+                }
+            }
+
+            /* ── 참석확인 제출 ── */
+            function submitCheckIn() {
+                var corp  = document.getElementById('ci-corp').value.trim();
+                var phone = document.getElementById('ci-phone').value.replace(/[^0-9]/g,'');
+                var lunch = document.getElementById('ci-lunch').value;
+                if (!corp)             { alert('법인을 선택해 주세요.'); return; }
+                if (phone.length < 10) { alert('전화번호를 올바르게 입력해 주세요.'); return; }
+                if (ENABLE_MEAL && !lunch) { alert(MEAL_LABEL + ' 식사 여부를 선택해 주세요.'); return; }
+                setLoading(true);
+                fetch('/api/checkin', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({corp,phone,lunch})})
+                    .then(function(r){return r.json();})
+                    .then(function(res){setLoading(false);handleResult(res);})
+                    .catch(function(){setLoading(false);alert('서버 오류가 발생했습니다.\n운영진에게 문의하세요.');});
+            }
+
+            /* ── 현장신청 제출 ── */
+            function submitRegister() {
+                var corp     = document.getElementById('re-corp').value.trim();
+                var ldap     = document.getElementById('re-ldap').value.trim();
+                var name     = document.getElementById('re-name').value.trim();
+                var phone    = document.getElementById('re-phone').value.replace(/[^0-9]/g,'');
+                var lunch    = document.getElementById('re-lunch').value;
+                var schedEl  = document.getElementById('re-schedule');
+                var schedule = schedEl ? schedEl.value : '';
+                if (!corp)             { alert('법인을 선택해 주세요.'); return; }
+                if (!name)             { alert('이름을 입력해 주세요.'); return; }
+                if (phone.length < 10) { alert('전화번호를 올바르게 입력해 주세요.'); return; }
+                if (ENABLE_MEAL && !lunch) { alert(MEAL_LABEL + ' 식사 여부를 선택해 주세요.'); return; }
+                if (ENABLE_SCHEDULE && SCHEDULE_OPTIONS && SCHEDULE_OPTIONS.length > 0 && !schedule) { alert('참여 일정을 선택해 주세요.'); return; }
+                setLoading(true);
+                fetch('/api/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({corp,ldap,name,phone,schedule,lunch})})
+                    .then(function(r){return r.json();})
+                    .then(function(res){setLoading(false);handleResult(res);})
+                    .catch(function(){setLoading(false);alert('서버 오류가 발생했습니다.\n운영진에게 문의하세요.');});
+            }
+        } // end initPage
+    })();
+</script>
+</body>
+</html>
