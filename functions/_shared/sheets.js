@@ -29,13 +29,13 @@ export async function getValues(token, sheetId, range) {
 /** 행 추가 */
 export async function appendRow(token, sheetId, sheetName, values) {
     const url = `${BASE}/${sheetId}/values/${encodeURIComponent(sheetName + '!A1')}:append`
-        + `?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+        + `?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
     return req(token, url, { method: 'POST', body: JSON.stringify({ values: [values] }) });
 }
 
 /** 단일 셀 업데이트 */
 export async function updateCell(token, sheetId, range, value) {
-    const url = `${BASE}/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+    const url = `${BASE}/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
     return req(token, url, { method: 'PUT', body: JSON.stringify({ values: [[value]] }) });
 }
 

@@ -150,11 +150,13 @@
         .qr-card {
             width:260px; height:260px; background:#fff; border-radius:20px;
             display:flex; align-items:center; justify-content:center;
-            padding:16px; margin-bottom:28px; box-shadow:0 4px 20px rgba(0,0,0,.08);
+            padding:16px; margin-bottom:28px;
+            box-shadow:0 4px 20px rgba(0,0,0,.08);
+            border: 3px solid transparent;
+            transition: border-color .2s;
         }
         .qr-card canvas, .qr-card img { width:228px !important; height:228px !important; }
-        .qr-card-warn  { background:#fffbeb; border:2px solid #fde68a; }
-        .qr-card-error { background:#fff5f5; border:2px solid #fca5a5; }
+        .qr-title { transition: color .2s; }
         .qr-result-btns { width:100%; display:flex; flex-direction:column; gap:10px; }
 
         .loading-overlay {
@@ -273,11 +275,11 @@
         </div>
     </div>
 
-    <!-- QR 결과 화면 -->
+    <!-- QR 결과 화면 (CHECKIN/ONSITE/NOSUB/NOMEM 모두 통합) -->
     <div class="screen" id="s-qr">
         <div class="qr-result-wrap">
-            <div class="qr-title"   id="qr-title"></div>
-            <div class="qr-message" id="qr-message"></div>
+            <div class="qr-title"   id="qr-title">접수 완료</div>
+            <div class="qr-message" id="qr-message">아래 QR 코드를 운영진에게 보여주세요.</div>
             <div class="qr-card"    id="qr-card"><div id="qr-code"></div></div>
             <div class="qr-result-btns">
                 <button class="btn btn-ghost" id="btn-qr-home">처음으로</button>
@@ -285,29 +287,6 @@
         </div>
     </div>
 
-    <!-- NOSUB 화면 (신청 여부 노출 없음) -->
-    <div class="screen" id="s-nosub">
-        <div class="qr-result-wrap">
-            <div class="qr-title">접수 완료</div>
-            <div class="qr-message">아래 QR 코드를 운영진에게 보여주세요.</div>
-            <div class="qr-card" id="qr-card-nosub"><div id="qr-code-nosub"></div></div>
-            <div class="qr-result-btns">
-                <button class="btn btn-ghost" id="btn-nosub-home">처음으로</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- NOMEM 화면 (신청 여부 노출 없음) -->
-    <div class="screen" id="s-nomem">
-        <div class="qr-result-wrap">
-            <div class="qr-title">접수 완료</div>
-            <div class="qr-message">아래 QR 코드를 운영진에게 보여주세요.</div>
-            <div class="qr-card" id="qr-card-nomem"><div id="qr-code-nomem"></div></div>
-            <div class="qr-result-btns">
-                <button class="btn btn-ghost" id="btn-nomem-home">처음으로</button>
-            </div>
-        </div>
-    </div>
 
 </div>
 
@@ -401,9 +380,7 @@
             document.getElementById('btn-checkin-submit').addEventListener('click',  submitCheckIn);
             document.getElementById('btn-register-submit').addEventListener('click', submitRegister);
             document.getElementById('btn-qr-home').addEventListener('click',         function() { goTo('home'); });
-            // btn-nosub-register 제거됨
-            document.getElementById('btn-nosub-home').addEventListener('click',      function() { goTo('home'); });
-            document.getElementById('btn-nomem-home').addEventListener('click',      function() { goTo('home'); });
+
 
             /* 식사 토글 */
             [['ci-lunch-yes','ci-lunch-no','ci-lunch'],['re-lunch-yes','re-lunch-no','re-lunch']].forEach(function(ids) {
@@ -462,32 +439,42 @@
             });
         }
 
+        /* ── QR 결과 색상 테이블 ──────────────────────────────────
+           출석체크 (신규)   노랑  #FEE500
+           출석체크 (중복)   주황  #f97316
+           현장신청          파랑  #60a5fa
+           미신청/비조합원   빨강  #ef4444
+           ──────────────────────────────────────────────────────── */
+        var QR_STYLES = {
+            checkin_new: { titleColor: '#92700a', cardBorder: '#FEE500' },
+            checkin_dup: { titleColor: '#c2410c', cardBorder: '#f97316' },
+            onsite:      { titleColor: '#1d4ed8', cardBorder: '#60a5fa' },
+            nosub:       { titleColor: '#dc2626', cardBorder: '#ef4444' },
+            nomem:       { titleColor: '#dc2626', cardBorder: '#ef4444' },
+        };
+
         /* ── 결과 처리 ── */
         function handleResult(res) {
             if (res.status === 'error') {
                 alert(res.message || '오류가 발생했습니다.\n운영진에게 문의하세요.');
                 return;
             }
-            var qrString = res.qrType + ':' + res.qrId;
-            if (res.qrType === 'CHECKIN') {
-                document.getElementById('qr-title').textContent   = '참석 확인 완료';
-                document.getElementById('qr-message').textContent = '아래 QR 코드를 운영진에게 보여주세요.';
-                document.getElementById('qr-card').className = 'qr-card';
-                generateQR('qr-code', qrString);
-                goTo('qr');
-            } else if (res.qrType === 'ONSITE') {
-                document.getElementById('qr-title').textContent   = '현장신청 완료';
-                document.getElementById('qr-message').textContent = '아래 QR 코드를 운영진에게 보여주세요.';
-                document.getElementById('qr-card').className = 'qr-card';
-                generateQR('qr-code', qrString);
-                goTo('qr');
-            } else if (res.qrType === 'NOSUB') {
-                generateQR('qr-code-nosub', qrString);
-                goTo('nosub');
-            } else if (res.qrType === 'NOMEM') {
-                generateQR('qr-code-nomem', qrString);
-                goTo('nomem');
-            }
+
+            var qrString  = res.qrType + ':' + res.qrId;
+            var styleKey  = 'checkin_new';
+
+            if      (res.qrType === 'CHECKIN' && !res.isDuplicate) styleKey = 'checkin_new';
+            else if (res.qrType === 'CHECKIN' &&  res.isDuplicate) styleKey = 'checkin_dup';
+            else if (res.qrType === 'ONSITE')                      styleKey = 'onsite';
+            else if (res.qrType === 'NOSUB')                       styleKey = 'nosub';
+            else if (res.qrType === 'NOMEM')                       styleKey = 'nomem';
+
+            var style = QR_STYLES[styleKey];
+            document.getElementById('qr-title').style.color     = style.titleColor;
+            document.getElementById('qr-card').style.borderColor = style.cardBorder;
+
+            generateQR('qr-code', qrString);
+            goTo('qr');
         }
 
         /* ── 참석확인 제출 → POST /api/checkin ── */

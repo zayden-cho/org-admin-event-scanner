@@ -46,7 +46,7 @@ export async function checkIn(env, corp, phone, lunch) {
     // ① 중복 체크인 → 기존 Index 반환
     const existing = await findRowByPhone(tk, eId, sheetName, aPhoneCol, phoneNorm);
     if (existing) {
-        return { status: 'ok', qrType: 'CHECKIN', qrId: String(existing.values[aIndexCol] ?? '') };
+        return { status: 'ok', qrType: 'CHECKIN', qrId: String(existing.values[aIndexCol] ?? ''), isDuplicate: true };
     }
 
     // ② 사전신청 매칭 (전화번호 + 법인)
@@ -89,7 +89,7 @@ export async function checkIn(env, corp, phone, lunch) {
         '어드민확인': '',
     });
 
-    return { status: 'ok', qrType: 'CHECKIN', qrId: index };
+    return { status: 'ok', qrType: 'CHECKIN', qrId: index, isDuplicate: false };
 }
 
 
@@ -131,7 +131,7 @@ export async function onSiteRegister(env, corp, ldap, name, phone, schedule, lun
 
             const already = await findRowByPhone(tk, eId, sheetName, aPhoneCol, phoneNorm);
             if (already) {
-                return { status: 'ok', qrType: 'CHECKIN', qrId: String(already.values[aIndexCol] ?? '') };
+                return { status: 'ok', qrType: 'CHECKIN', qrId: String(already.values[aIndexCol] ?? ''), isDuplicate: true };
             }
 
             // 출석 미처리 → 저장 후 반환
@@ -152,7 +152,7 @@ export async function onSiteRegister(env, corp, ldap, name, phone, schedule, lun
                 'Index':    rIndex,
                 '어드민확인': '',
             });
-            return { status: 'ok', qrType: 'CHECKIN', qrId: rIndex };
+            return { status: 'ok', qrType: 'CHECKIN', qrId: rIndex, isDuplicate: false };
         }
     }
 
