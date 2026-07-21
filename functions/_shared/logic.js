@@ -1,63 +1,63 @@
 /* 비즈니스 로직
    ─────────────────────────────────────────────────────────
-   API 호출 최적화:
-     - 헤더맵: ensureSheet 완료 시 자동 캐시 → getHeaderMap 추가 호출 없음
-     - appendRowByHeader: 캐시된 맵 전달 → 재조회 없음
-     - findRowByPhone: 오픈형 범위 → _getLastRow 호출 제거
+   캐시 전략:
+     [응답 시트] → Cloudflare KV (1일 TTL)
+       - 행사 전 또는 어드민에서 강제 갱신
+       - KV miss 시 Sheets에서 fetch 후 KV에 저장
+       - 모듈 메모리에도 이중 보관 (KV 읽기 비용 제거)
+
+     [출석 시트] → 모듈 메모리 Map
+       - isolate 첫 요청에 Sheets에서 로드 (batchGet 1회)
+       - 이후 체크인할 때마다 메모리에 추가 (API 추가 없음)
+
+   결과:
+     신규 체크인: appendRow 1회만 API 호출
+     중복 체크인: API 호출 0회 (순수 메모리)
    ─────────────────────────────────────────────────────────*/
 
-import { getAccessToken } from './auth.js';
+import { getAccessToken }                           from './auth.js';
 import {
-    getHeaderMap, batchGetValues, findRowByPhone, findRowByIndex,
-    appendRowByHeader, updateCell, ensureSheet, colLetter,
-} from './sheets.js';
+    getHeaderMap, batchGetValues, getValues,
+    appendRowByHeader, updateCell, findRowByIndex,
+    ensureSheet, colLetter,
+}                                                   from './sheets.js';
 import {
     FEATURES, attendHeaders, onsiteHeaders,
     normalizePhone, formatPhone, nowKST,
-} from './settings.js';
+}                                                   from './settings.js';
 
-/* ── 토큰 헬퍼 ── */
+/* ── 상수 ── */
+const KV_RESPONSE_KEY = 'krew_response_data';
+const KV_TTL_SEC      = 86400; // 1일
+
+/* ── 출석 모듈 캐시 (phoneNorm → qrId) ───────────────────
+   isolate 수명 동안 유지. 새 체크인마다 자동 업데이트.     */
+const _attendCache      = new Map();
+let   _attendCacheReady = false;
+
+/* ── 응답 모듈 캐시 (KV 읽기 비용 제거용 이중 레이어) ──── */
+let _responseModuleCache = null;
+
+
+/* ═══════════════════════════════════════════════════════════
+   내부 헬퍼
+   ═══════════════════════════════════════════════════════════ */
+
 async function getToken(env) {
-    const key = env.SERVICE_ACCOUNT_KEY.replace(/\\n/g, '\n');
-    return getAccessToken(env.SERVICE_ACCOUNT_EMAIL, key);
+    return getAccessToken(env.SERVICE_ACCOUNT_EMAIL,
+        env.SERVICE_ACCOUNT_KEY.replace(/\\n/g, '\n'));
 }
 
-/* ── 헤더맵 후보 컬럼 찾기 ── */
 function col(map, candidates) {
     for (const c of candidates) if (map[c] !== undefined) return map[c];
     return null;
 }
 
+/** 응답 시트 전체를 가져와 정규화된 객체 배열로 변환 */
+async function _fetchAndProcessResponse(tk, env) {
+    const eId  = env.EVENT_SHEET_ID;
+    const rMap = await getHeaderMap(tk, eId, '응답');
 
-/* ═══════════════════════════════════════════════════════════
-   참석확인 (checkIn)
-
-   API 호출 흐름:
-     최초 요청: ensureSheet(출석) + ensureSheet/getHeaderMap(응답)
-                → 각각 헤더 조회 1회 후 캐시
-     이후 요청: 전화번호 컬럼 1~2회 + 매칭 행 1회 + appendRow 1회
-                = 3~4 회
-   ═══════════════════════════════════════════════════════════ */
-export async function checkIn(env, corp, phone, lunch) {
-    lunch = FEATURES.enableMeal ? lunch : '';
-
-    const tk        = await getToken(env);
-    const phoneNorm = normalizePhone(phone);
-    const phoneFmt  = formatPhone(phone);
-    const eId       = env.EVENT_SHEET_ID;
-    const sheetName = env.ATTEND_SHEET_NAME || '테스트';
-
-    /* ① 시트 준비 + 헤더맵 취득 (캐시 우선, 최초 1회만 API 호출)
-          ensureSheet와 getHeaderMap(응답) 을 병렬로 실행 */
-    await Promise.all([
-        ensureSheet(tk, eId, sheetName, attendHeaders()),
-        getHeaderMap(tk, eId, '응답'),     // 캐시 적재
-    ]);
-    const aMap = await getHeaderMap(tk, eId, sheetName); // 캐시 반환
-    const rMap = await getHeaderMap(tk, eId, '응답');     // 캐시 반환
-
-    const aPhoneCol    = col(aMap, ['전화번호']);
-    const aIndexCol    = col(aMap, ['Index', 'index']);
     const rPhoneCol    = col(rMap, ['전화번호']);
     const rCorpCol     = col(rMap, ['법인']);
     const rLdapCol     = col(rMap, ['LDAP']);
@@ -67,56 +67,195 @@ export async function checkIn(env, corp, phone, lunch) {
     const rStatusCol   = col(rMap, ['참여상태']);
 
     if (rPhoneCol == null || rIndexCol == null) {
-        return { status: 'error', message: '사전신청 시트 헤더를 확인해 주세요.' };
+        throw new Error('응답 시트 헤더를 확인해 주세요.');
     }
 
-    /* ② batchGet: 출석(전화번호+Index) + 응답(전체) 를 1번 API 호출로 취득
-          → 순차 4회 호출 → 1회로 단축
-          → 매칭은 메모리에서 처리 (추가 API 호출 없음) */
-    const [attendPhones, attendIndexes, responseRows] = await batchGetValues(tk, eId, [
-        `${sheetName}!${colLetter(aPhoneCol)}2:${colLetter(aPhoneCol)}`,  // 출석 전화번호
-        `${sheetName}!${colLetter(aIndexCol)}2:${colLetter(aIndexCol)}`,  // 출석 Index
-        `응답!A2:Z`,                                                         // 응답 전체
-    ]);
+    const rows = await getValues(tk, eId, '응답!A2:Z');
 
-    /* ③ 출석 중복 확인 (메모리 검색) */
-    for (let i = 0; i < attendPhones.length; i++) {
-        const cell = String((attendPhones[i] || [])[0] || '').replace(/[^0-9]/g, '');
-        if (cell === phoneNorm) {
-            return {
-                status: 'ok', qrType: 'CHECKIN', isDuplicate: true,
-                qrId: String((attendIndexes[i] || [])[0] || ''),
-            };
+    return rows
+        .filter(row => row.length > 0)
+        .map(row => ({
+            phoneNorm: normalizePhone(String(row[rPhoneCol] || '')),
+            corp:      String(row[rCorpCol]     || '').trim(),
+            ldap:      rLdapCol     != null ? String(row[rLdapCol]     || '').trim() : '',
+            name:      rNameCol     != null ? String(row[rNameCol]     || '').trim() : '',
+            index:     String(row[rIndexCol]    || '').trim(),
+            schedule:  rScheduleCol != null ? String(row[rScheduleCol] || '').trim() : '',
+            regStatus: rStatusCol   != null ? String(row[rStatusCol]   || '').trim() : '',
+        }))
+        .filter(r => r.phoneNorm && r.corp && r.index);
+}
+
+/** 응답 캐시 읽기 (모듈 → KV → Sheets 순서로 fallback) */
+async function _getResponseCache(env) {
+    // Layer 1: 모듈 메모리 (가장 빠름, 0ms)
+    if (_responseModuleCache) return _responseModuleCache;
+
+    // Layer 2: KV (~10ms, isolate 재시작해도 유지)
+    if (env.KV_CACHE) {
+        const kvData = await env.KV_CACHE.get(KV_RESPONSE_KEY, 'json');
+        if (kvData) {
+            _responseModuleCache = kvData; // 모듈 캐시에도 저장
+            return kvData;
         }
     }
 
-    /* ④ 응답 시트 매칭 (메모리 검색, 법인+전화번호) */
-    const matched = responseRows.find(row =>
-        String(row[rPhoneCol] || '').replace(/[^0-9]/g, '') === phoneNorm &&
-        String(row[rCorpCol]  || '').trim() === corp
+    // Layer 3: Sheets API (캐시 미스 시 1회만 호출)
+    const tk   = await getToken(env);
+    const data = await _fetchAndProcessResponse(tk, env);
+    _responseModuleCache = data;
+
+    if (env.KV_CACHE) {
+        await env.KV_CACHE.put(KV_RESPONSE_KEY, JSON.stringify(data),
+            { expirationTtl: KV_TTL_SEC });
+    }
+
+    return data;
+}
+
+/** 출석 캐시 로드 (isolate 첫 checkIn 요청 시 1회만 실행) */
+async function _loadAttendCache(tk, env, sheetName, aMap) {
+    if (_attendCacheReady) return;
+
+    const aPhoneCol = col(aMap, ['전화번호']);
+    const aIndexCol = col(aMap, ['Index', 'index']);
+
+    if (aPhoneCol == null || aIndexCol == null) {
+        _attendCacheReady = true;
+        return;
+    }
+
+    const [phones, indexes] = await batchGetValues(tk, env.EVENT_SHEET_ID, [
+        `${sheetName}!${colLetter(aPhoneCol)}2:${colLetter(aPhoneCol)}`,
+        `${sheetName}!${colLetter(aIndexCol)}2:${colLetter(aIndexCol)}`,
+    ]);
+
+    phones.forEach((row, i) => {
+        const p   = normalizePhone(String((row || [])[0] || ''));
+        const idx = String((indexes[i] || [])[0] || '');
+        if (p && idx) _attendCache.set(p, idx);
+    });
+
+    _attendCacheReady = true;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   캐시 관리 (어드민에서 호출)
+   ═══════════════════════════════════════════════════════════ */
+
+/** 응답 캐시 강제 갱신 — 어드민 버튼에서 호출
+ Sheets에서 최신 데이터 fetch → KV + 모듈 캐시 갱신
+ 반환: { count: 캐시된 행 수 } */
+export async function preloadResponseCache(env) {
+    const tk   = await getToken(env);
+    const data = await _fetchAndProcessResponse(tk, env);
+
+    _responseModuleCache = data;
+
+    if (env.KV_CACHE) {
+        await env.KV_CACHE.put(KV_RESPONSE_KEY, JSON.stringify(data),
+            { expirationTtl: KV_TTL_SEC });
+    }
+
+    return { status: 'ok', count: data.length };
+}
+
+/** 캐시 전체 초기화 (강제 갱신 전 단계) */
+export async function invalidateCache(env) {
+    _responseModuleCache = null;
+    _attendCacheReady    = false;
+    _attendCache.clear();
+
+    if (env.KV_CACHE) {
+        await env.KV_CACHE.delete(KV_RESPONSE_KEY);
+    }
+
+    return { status: 'ok' };
+}
+
+/** 캐시 상태 조회 (어드민 UI 표시용) */
+export async function getCacheStatus(env) {
+    let kvStatus = 'KV 미설정';
+    let kvCount  = 0;
+
+    if (env.KV_CACHE) {
+        const kvData = await env.KV_CACHE.get(KV_RESPONSE_KEY, 'json');
+        kvStatus = kvData ? '캐시됨' : '미캐시';
+        kvCount  = kvData ? kvData.length : 0;
+    }
+
+    return {
+        status:         'ok',
+        responseCache:  _responseModuleCache ? '모듈 캐시 있음' : '없음',
+        responseCount:  _responseModuleCache ? _responseModuleCache.length : 0,
+        kvStatus,
+        kvCount,
+        attendCacheReady:  _attendCacheReady,
+        attendCacheCount:  _attendCache.size,
+    };
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   참석확인 (checkIn)
+
+   핫패스 API 호출 횟수 (완전 워밍업 후):
+     신규:   1회 (appendRow)
+     중복:   0회 (순수 메모리)
+   ═══════════════════════════════════════════════════════════ */
+export async function checkIn(env, corp, phone, lunch) {
+    lunch = FEATURES.enableMeal ? lunch : '';
+
+    const phoneNorm = normalizePhone(phone);
+    const phoneFmt  = formatPhone(phone);
+    const sheetName = env.ATTEND_SHEET_NAME || '테스트';
+
+    /* ① 출석 캐시 + 응답 캐시 병렬 준비
+          (두 작업이 독립적이므로 Promise.all로 동시 실행) */
+    const tk = await getToken(env);
+
+    await ensureSheet(tk, env.EVENT_SHEET_ID, sheetName, attendHeaders());
+    const aMap = await getHeaderMap(tk, env.EVENT_SHEET_ID, sheetName);
+
+    const [responseData] = await Promise.all([
+        _getResponseCache(env),                        // 응답 캐시 (KV or 모듈)
+        _loadAttendCache(tk, env, sheetName, aMap),    // 출석 캐시 (첫 요청만 API)
+    ]);
+
+    /* ② 중복 체크 (순수 메모리, API 없음) */
+    if (_attendCache.has(phoneNorm)) {
+        return {
+            status: 'ok', qrType: 'CHECKIN', isDuplicate: true,
+            qrId: _attendCache.get(phoneNorm),
+        };
+    }
+
+    /* ③ 사전신청 매칭 (순수 메모리, API 없음) */
+    const matched = responseData.find(r =>
+        r.phoneNorm === phoneNorm && r.corp === corp
     );
 
     if (!matched) return { status: 'ok', qrType: 'NOSUB', qrId: 'KU-NOSUB' };
 
-    /* ⑤ 출석 저장 (캐시된 aMap 전달 → appendRowByHeader 내부 재조회 없음) */
-    const index    = String(matched[rIndexCol] ?? '').trim();
-    const schedule = (FEATURES.enableSchedule && rScheduleCol != null)
-        ? String(matched[rScheduleCol] ?? '').trim() : '';
-
-    await appendRowByHeader(tk, eId, sheetName, {
+    /* ④ 출석 저장 (1회 API 호출, 불가피) */
+    await appendRowByHeader(tk, env.EVENT_SHEET_ID, sheetName, {
         '응답시간': nowKST(),
         '법인':     corp,
-        'LDAP':     rLdapCol   != null ? String(matched[rLdapCol]   ?? '').trim() : '',
-        '이름':     rNameCol   != null ? String(matched[rNameCol]   ?? '').trim() : '',
+        'LDAP':     matched.ldap,
+        '이름':     matched.name,
         '전화번호': phoneFmt,
         '식사여부': lunch,
-        '참여일정': schedule,
-        '참여상태': rStatusCol != null ? String(matched[rStatusCol] ?? '').trim() : '',
-        'Index':    index,
+        '참여일정': FEATURES.enableSchedule ? matched.schedule : '',
+        '참여상태': matched.regStatus,
+        'Index':    matched.index,
         '어드민확인': '',
     }, aMap);
 
-    return { status: 'ok', qrType: 'CHECKIN', qrId: index, isDuplicate: false };
+    /* ⑤ 출석 캐시 업데이트 (메모리만, 이후 중복 체크 즉시 처리) */
+    _attendCache.set(phoneNorm, matched.index);
+
+    return { status: 'ok', qrType: 'CHECKIN', qrId: matched.index, isDuplicate: false };
 }
 
 
@@ -131,70 +270,74 @@ export async function onSiteRegister(env, corp, ldap, name, phone, schedule, lun
         return { status: 'ok', qrType: 'NOSUB', qrId: 'KU-NOSUB' };
     }
 
-    const tk        = await getToken(env);
     const phoneNorm = normalizePhone(phone);
     const phoneFmt  = formatPhone(phone);
-    const eId       = env.EVENT_SHEET_ID;
     const sheetName = env.ATTEND_SHEET_NAME || '테스트';
+    const tk        = await getToken(env);
+    const eId       = env.EVENT_SHEET_ID;
 
-    /* ① 응답 시트 헤더맵 (캐시 우선) */
-    const rMap = await getHeaderMap(tk, eId, '응답');
-    const rPhoneCol    = col(rMap, ['전화번호']);
-    const rCorpCol     = col(rMap, ['법인']);
-    const rLdapCol     = col(rMap, ['LDAP']);
-    const rNameCol     = col(rMap, ['이름']);
-    const rScheduleCol = col(rMap, ['참여일정']);
-    const rIndexCol    = col(rMap, ['index', 'Index']);
-    const rStatusCol   = col(rMap, ['참여상태']);
+    /* ① 응답 캐시에서 사전신청자 확인 */
+    const responseData = await _getResponseCache(env);
+    const preMatch     = responseData.find(r => r.phoneNorm === phoneNorm);
 
-    /* ② 사전신청자 확인 → 출석 처리 후 CHECKIN QR */
-    if (rPhoneCol != null) {
-        const preMatch = await findRowByPhone(tk, eId, '응답', rPhoneCol, phoneNorm);
-        if (preMatch) {
-            await ensureSheet(tk, eId, sheetName, attendHeaders());
-            const aMap      = await getHeaderMap(tk, eId, sheetName);
-            const aPhoneCol = col(aMap, ['전화번호']);
-            const aIndexCol = col(aMap, ['Index', 'index']);
+    if (preMatch) {
+        /* 사전신청자 → 출석 처리 */
+        await ensureSheet(tk, eId, sheetName, attendHeaders());
+        const aMap      = await getHeaderMap(tk, eId, sheetName);
+        const aPhoneCol = col(aMap, ['전화번호']);
+        const aIndexCol = col(aMap, ['Index', 'index']);
 
-            /* 이미 출석 처리됐는지 */
-            const already = await findRowByPhone(tk, eId, sheetName, aPhoneCol, phoneNorm);
-            if (already) {
-                return { status: 'ok', qrType: 'CHECKIN', qrId: String(already.values[aIndexCol] ?? ''), isDuplicate: true };
-            }
+        /* 출석 캐시에서 중복 확인 */
+        await _loadAttendCache(tk, env, sheetName, aMap);
 
-            const r      = preMatch.values;
-            const rIndex = rIndexCol != null ? String(r[rIndexCol] ?? '').trim() : '';
-            const rSched = (FEATURES.enableSchedule && rScheduleCol != null)
-                ? String(r[rScheduleCol] ?? '').trim() : '';
-
-            await appendRowByHeader(tk, eId, sheetName, {
-                '응답시간': nowKST(),
-                '법인':     rCorpCol  != null ? String(r[rCorpCol]  ?? '').trim() : corp,
-                'LDAP':     rLdapCol  != null ? String(r[rLdapCol]  ?? '').trim() : '',
-                '이름':     rNameCol  != null ? String(r[rNameCol]  ?? '').trim() : '',
-                '전화번호': phoneFmt,
-                '식사여부': lunch,
-                '참여일정': rSched,
-                '참여상태': rStatusCol != null ? String(r[rStatusCol] ?? '').trim() : '',
-                'Index':    rIndex,
-                '어드민확인': '',
-            }, aMap);
-            return { status: 'ok', qrType: 'CHECKIN', qrId: rIndex, isDuplicate: false };
+        if (_attendCache.has(phoneNorm)) {
+            return {
+                status: 'ok', qrType: 'CHECKIN', isDuplicate: true,
+                qrId: _attendCache.get(phoneNorm),
+            };
         }
+
+        await appendRowByHeader(tk, eId, sheetName, {
+            '응답시간': nowKST(),
+            '법인':     preMatch.corp,
+            'LDAP':     preMatch.ldap,
+            '이름':     preMatch.name,
+            '전화번호': phoneFmt,
+            '식사여부': lunch,
+            '참여일정': FEATURES.enableSchedule ? preMatch.schedule : '',
+            '참여상태': preMatch.regStatus,
+            'Index':    preMatch.index,
+            '어드민확인': '',
+        }, aMap);
+
+        _attendCache.set(phoneNorm, preMatch.index);
+        return { status: 'ok', qrType: 'CHECKIN', qrId: preMatch.index, isDuplicate: false };
     }
 
-    /* ③ 현장 시트 준비 + 중복 확인 */
+    /* ② 현장 시트 중복 확인 */
     await ensureSheet(tk, eId, '현장', onsiteHeaders());
     const oMap      = await getHeaderMap(tk, eId, '현장');
     const oPhoneCol = col(oMap, ['전화번호']);
     const oIndexCol = col(oMap, ['Index', 'index']);
 
-    const dup = await findRowByPhone(tk, eId, '현장', oPhoneCol, phoneNorm);
-    if (dup) {
-        return { status: 'ok', qrType: 'ONSITE', qrId: String(dup.values[oIndexCol] ?? '') };
+    /* 현장 전화번호 컬럼 스캔 (1회 API) */
+    const oPhones = oPhoneCol != null
+        ? await getValues(tk, eId, `현장!${colLetter(oPhoneCol)}2:${colLetter(oPhoneCol)}`)
+        : [];
+
+    for (let i = 0; i < oPhones.length; i++) {
+        if (normalizePhone(String((oPhones[i] || [])[0] || '')) === phoneNorm) {
+            /* 중복 — 해당 행의 Index만 추가 조회 */
+            const idxRow = await getValues(tk, eId,
+                `현장!${colLetter(oIndexCol)}${i + 2}:${colLetter(oIndexCol)}${i + 2}`);
+            return {
+                status: 'ok', qrType: 'ONSITE',
+                qrId: String((idxRow[0] || [])[0] || ''),
+            };
+        }
     }
 
-    /* ④ 조합원 여부 확인 */
+    /* ③ 조합원 확인 */
     let memberStatus = '비조합원';
     let krewId       = null;
     try {
@@ -205,22 +348,29 @@ export async function onSiteRegister(env, corp, ldap, name, phone, schedule, lun
         const kLdapCol  = col(kMap, ['영문명', 'LDAP'])     ?? 3;
         const kPhoneCol = col(kMap, ['연락처', '전화번호']) ?? 4;
 
-        const krewMatch = await findRowByPhone(
-            tk, env.KREW_SHEET_ID, '크루유니언', kPhoneCol, phoneNorm,
-            row => {
-                const baseMatch = String(row[kCorpCol] ?? '').trim() === corp
-                    && String(row[kNameCol] ?? '').trim() === name;
-                const ldapMatch = ldap ? String(row[kLdapCol] ?? '').trim() === ldap : true;
-                return baseMatch && ldapMatch;
+        const kPhones = await getValues(tk, env.KREW_SHEET_ID,
+            `크루유니언!${colLetter(kPhoneCol)}2:${colLetter(kPhoneCol)}`);
+
+        for (let i = 0; i < kPhones.length; i++) {
+            if (normalizePhone(String((kPhones[i] || [])[0] || '')) === phoneNorm) {
+                const rowNum = i + 2;
+                const row    = (await getValues(tk, env.KREW_SHEET_ID,
+                    `크루유니언!A${rowNum}:Z${rowNum}`))[0] || [];
+
+                const baseMatch = String(row[kCorpCol] || '').trim() === corp
+                    && String(row[kNameCol] || '').trim() === name;
+                const ldapMatch = ldap ? String(row[kLdapCol] || '').trim() === ldap : true;
+
+                if (baseMatch && ldapMatch) {
+                    memberStatus = '조합원';
+                    krewId       = String(row[kIdCol] || '').trim();
+                    break;
+                }
             }
-        );
-        if (krewMatch) {
-            memberStatus = '조합원';
-            krewId       = String(krewMatch.values[kIdCol] ?? '').trim();
         }
     } catch { memberStatus = '조합원DB조회실패'; }
 
-    /* ⑤ 비조합원 */
+    /* ④ 비조합원 */
     if (!krewId) {
         await appendRowByHeader(tk, eId, '현장', {
             '응답시간': nowKST(), '법인': corp, 'LDAP': ldap, '이름': name,
@@ -230,7 +380,7 @@ export async function onSiteRegister(env, corp, ldap, name, phone, schedule, lun
         return { status: 'ok', qrType: 'NOMEM', qrId: 'KU-NOMEM' };
     }
 
-    /* ⑥ 조합원 */
+    /* ⑤ 조합원 */
     await appendRowByHeader(tk, eId, '현장', {
         '응답시간': nowKST(), '법인': corp, 'LDAP': ldap, '이름': name,
         '전화번호': phoneFmt, '식사여부': lunch, '참여일정': schedule,
@@ -241,7 +391,7 @@ export async function onSiteRegister(env, corp, ldap, name, phone, schedule, lun
 
 
 /* ═══════════════════════════════════════════════════════════
-   어드민 PIN 확인
+   어드민
    ═══════════════════════════════════════════════════════════ */
 export function adminVerifyPin(env, pin) {
     const correct = env.ADMIN_PIN;
@@ -250,14 +400,6 @@ export function adminVerifyPin(env, pin) {
     return { status: 'ok' };
 }
 
-
-/* ═══════════════════════════════════════════════════════════
-   QR 스캔 조회 (adminScanQR)
-
-   API 호출 흐름:
-     최초 요청: getHeaderMap 1회 → 캐시
-     이후 요청: Index 컬럼 1회 + 매칭 행 1회 + updateCell 1회 = 3회
-   ═══════════════════════════════════════════════════════════ */
 export async function adminScanQR(env, qrString, pin) {
     const pinResult = adminVerifyPin(env, pin);
     if (pinResult.status !== 'ok') return { status: 'unauthorized', message: pinResult.message };
@@ -275,20 +417,17 @@ export async function adminScanQR(env, qrString, pin) {
     const eId       = env.EVENT_SHEET_ID;
     const sheetName = qrType === 'CHECKIN' ? (env.ATTEND_SHEET_NAME || '테스트') : '현장';
 
-    /* 헤더맵 (캐시 우선) */
     const map      = await getHeaderMap(tk, eId, sheetName);
     const indexCol = col(map, ['Index', 'index']);
     const adminCol = col(map, ['어드민확인']);
 
     if (indexCol == null) return { status: 'error', message: 'Index 컬럼을 찾을 수 없습니다.' };
 
-    /* Index 컬럼 검색 */
     const found = await findRowByIndex(tk, eId, sheetName, indexCol, qrId);
     if (!found) return { status: 'notfound', message: 'QR 정보를 찾을 수 없습니다.\n다시 스캔해 주세요.' };
 
     const { rowNum, values } = found;
 
-    /* 어드민확인 처리 */
     const adminVal         = adminCol != null ? (values[adminCol] ?? '') : '';
     const alreadyConfirmed = adminVal && String(adminVal).trim() !== '';
     const confirmedAt      = alreadyConfirmed ? String(adminVal).slice(11, 16) : null;
@@ -297,7 +436,6 @@ export async function adminScanQR(env, qrString, pin) {
         await updateCell(tk, eId, `${sheetName}!${colLetter(adminCol)}${rowNum}`, nowKST());
     }
 
-    /* 각 컬럼 추출 */
     const tsCol     = col(map, ['응답시간']);
     const corpCol   = col(map, ['법인']);
     const ldapCol   = col(map, ['LDAP']);
@@ -305,18 +443,13 @@ export async function adminScanQR(env, qrString, pin) {
     const phoneCol  = col(map, ['전화번호']);
     const lunchCol  = col(map, ['식사여부']);
     const schedCol  = col(map, ['참여일정']);
-    const statusCol = qrType === 'CHECKIN'
-        ? col(map, ['참여상태'])
-        : col(map, ['조합원여부']);
+    const statusCol = qrType === 'CHECKIN' ? col(map, ['참여상태']) : col(map, ['조합원여부']);
 
     const tsVal     = tsCol != null ? String(values[tsCol] ?? '') : '';
     const timeStamp = tsVal ? tsVal.slice(11, 16) : '-';
 
     return {
-        status: 'found',
-        type:   qrType,
-        alreadyConfirmed,
-        confirmedAt,
+        status: 'found', type: qrType, alreadyConfirmed, confirmedAt,
         name:         nameCol  != null ? String(values[nameCol]  ?? '-') : '-',
         corp:         corpCol  != null ? String(values[corpCol]  ?? '-') : '-',
         ldap:         ldapCol  != null ? String(values[ldapCol]  ?? '')  : '',

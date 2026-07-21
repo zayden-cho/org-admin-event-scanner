@@ -56,6 +56,12 @@
         .admin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
         .admin-title{font-size:16px;font-weight:700;color:var(--text2)}
         .admin-logout{font-size:12px;color:var(--text3);cursor:pointer;background:none;border:none;font-family:var(--font);padding:4px 8px}
+        .cache-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface);border-radius:var(--r);margin-bottom:16px;border:1px solid var(--border)}
+        .cache-status{font-size:12px;color:var(--text3);flex:1}
+        .cache-status strong{color:var(--text2)}
+        .cache-btn{font-size:12px;font-weight:700;font-family:var(--font);padding:6px 12px;border-radius:8px;border:none;cursor:pointer;background:var(--accent);color:#000;white-space:nowrap;transition:opacity .15s}
+        .cache-btn:active{opacity:.8}
+        .cache-btn.loading{opacity:.5;cursor:not-allowed}
         .admin-logout:active{color:var(--text2)}
 
         .scanner-label{font-size:12px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
@@ -138,12 +144,16 @@
             <div class="admin-title">참석 조회</div>
             <button class="admin-logout" id="logout-btn">로그아웃</button>
         </div>
+        <div class="cache-bar">
+            <div class="cache-status" id="cache-status">캐시 상태 확인 중...</div>
+            <button class="cache-btn" id="cache-btn">응답 캐시 갱신</button>
+        </div>
         <div class="scanner-label">QR 코드 스캔</div>
         <div id="qr-reader"></div>
         <div class="scanner-status" id="scanner-status">카메라를 QR 코드에 가져다 대주세요</div>
         <div class="scan-error"  id="scan-error"></div>
         <div class="dup-banner"  id="dup-banner">
-            <div class="dup-banner-title">이미 처리된 코드</div>
+            <div class="dup-banner-title">⚠️ 이미 처리된 코드</div>
             <div class="dup-banner-sub" id="dup-banner-sub"></div>
         </div>
         <div class="result-card no-dup" id="result-card">
@@ -225,6 +235,42 @@
             }).then(function(res) { return res.json(); });
         }
 
+        /* ── 캐시 상태 표시 및 갱신 ── */
+        function updateCacheStatus() {
+            var statusEl = document.getElementById('cache-status');
+            statusEl.textContent = '캐시 상태 확인 중...';
+            callAPI('cacheStatus', {})
+                .then(function(res) {
+                    if (res.status === 'ok') {
+                        var kvInfo = res.kvStatus !== 'KV 미설정'
+                            ? ' | KV: ' + res.kvStatus + ' (' + res.kvCount + '건)'
+                            : ' | KV 미설정';
+                        statusEl.innerHTML = '응답캐시: <strong>' + res.responseCount + '건</strong> | 출석캐시: <strong>' + res.attendCacheCount + '건</strong>' + kvInfo;
+                    }
+                })
+                .catch(function() { statusEl.textContent = '상태 확인 실패'; });
+        }
+
+        document.getElementById('cache-btn').addEventListener('click', function() {
+            var btn = document.getElementById('cache-btn');
+            btn.classList.add('loading'); btn.textContent = '갱신 중...';
+            callAPI('preloadCache', { pin: _pin })
+                .then(function(res) {
+                    btn.classList.remove('loading');
+                    btn.textContent = '응답 캐시 갱신';
+                    if (res.status === 'ok') {
+                        document.getElementById('cache-status').innerHTML
+                            = '응답캐시 갱신 완료: <strong>' + res.count + '건</strong>';
+                    } else {
+                        alert('캐시 갱신 실패: ' + res.message);
+                    }
+                })
+                .catch(function() {
+                    btn.classList.remove('loading'); btn.textContent = '응답 캐시 갱신';
+                    alert('캐시 갱신 요청 실패');
+                });
+        });
+
         /* ── PIN 확인 + FEATURES 수신 (1번 요청으로 처리) ── */
         function verifyPin() {
             var pin = pinInput.value.trim();
@@ -240,6 +286,7 @@
                         pinWrap.style.display     = 'none';
                         scannerWrap.style.display = 'flex';
                         startScanner();
+                        updateCacheStatus(); // 스캐너 화면 진입 시 캐시 상태 표시
                     } else {
                         pinError.textContent = res.message || 'PIN이 올바르지 않습니다.';
                         pinInput.value = ''; pinInput.focus();
@@ -307,6 +354,7 @@
             if (res.type === 'NOSUB') {
                 specialCard.style.background = '#1c1500';
                 specialCard.style.border     = '1px solid #b45309';
+                specialIcon.textContent  = '📋';
                 specialTitle.textContent = '사전신청 없음';
                 specialMsg.textContent   = '사전신청을 하지 않은 분입니다.\n현장신청을 안내해 주세요.';
                 specialCard.style.display = 'block';
@@ -315,6 +363,7 @@
             if (res.type === 'NOMEM') {
                 specialCard.style.background = '#1c0a0a';
                 specialCard.style.border     = '1px solid #dc2626';
+                specialIcon.textContent  = '⚠️';
                 specialTitle.textContent = '비조합원';
                 specialMsg.textContent   = '조합원 확인이 되지 않는 분입니다.\n현장신청 데이터가 저장되었습니다.';
                 specialCard.style.display = 'block';
